@@ -2,21 +2,19 @@ import numpy as np
 
 
 class PortfolioOptimizerSA:
-    def __init__(
-        self,
-        T_0: float,
-        T_f: float,
-        max_iter: int,
-        step_size: float,
-        annealing_rate: float,
-        states: np.ndarray,
-        probabilities: np.ndarray,
-        alpha: float,
-        S_0: float,
-        V_0: float,
-        return_rate: float,
-        user_portfolio: np.ndarray = None,
-    ) -> None:
+    def __init__(self,
+                 T_0: float,
+                 T_f: float,
+                 max_iter: int,
+                 step_size: float,
+                 annealing_rate: float,
+                 probabilities: np.ndarray,
+                 alpha: float,
+                 S_0: np.ndarray,
+                 S_T: np.ndarray,
+                 V_0: float,
+                 return_rate: float,
+                 initial_portfolio: np.ndarray = None) -> None:
         """
         Initialize the PortfolioOptimizerSA object.
 
@@ -26,16 +24,13 @@ class PortfolioOptimizerSA:
             max_iter (int): Maximum number of iterations for simulated annealing.
             step_size (float): Step size for simulated annealing.
             annealing_rate (float): Annealing rate for simulated annealing.
-            states (np.ndarray): Array of possible states for the portfolio.
-            probabilities (np.ndarray): Array of probabilities corresponding to the states.
+            probabilities (np.ndarray): Array of probabilities corresponding to S_T.
             alpha (float): Risk aversion parameter.
-            S_0 (float): Initial state.
+            S_0 (np.ndarray): Initial prices.
+            S_T (np.ndarray): Possible prices at time T.
             V_0 (float): Initial portfolio value.
             return_rate (float): Expected return rate.
-            user_portfolio (np.ndarray, optional): User-defined initial portfolio. Defaults to None.
-        
-        Returns:
-            None
+            initial_portfolio (np.ndarray, optional): User-defined initial portfolio. Defaults to None.
         """
         
         # simulated annealing params
@@ -47,69 +42,14 @@ class PortfolioOptimizerSA:
 
         # probabilistic params
         self.S_0 = S_0
-        self.states = states
+        self.S_T = S_T
         self.probabilities = probabilities
         self.alpha = alpha
         self.return_rate = return_rate
         self.V_0 = V_0
         
         self._prepare_constraints()
-
-        if user_portfolio is not None:
-            self.x = user_portfolio
-        else:
-            self.x = self._initialize_portfolio()
-
-    def _annealing_schedule(self, T: float, iteration: int) -> float:
-        """
-        Calculate the temperature for simulated annealing based on the current iteration.
-
-        Args:
-            T (float): The initial temperature.
-            iteration (int): The current iteration number.
-
-        Returns:
-            float: The updated temperature for the given iteration.
-        """
-        return T * (self.annealing_rate - 0.2 * (iteration / self.max_iter))
-
-    def _initialize_portfolio(self) -> np.ndarray:
-        """
-        Initializes the portfolio by generating a random feasible portfolio.
-
-        Returns:
-            np.ndarray: The initialized portfolio.
-
-        Raises:
-            ValueError: If a feasible portfolio cannot be found after a maximum number of attempts.
-        """
-        n = len(self.S_0)
-        max_tries = 2000
-
-        for _ in range(max_tries):
-            x = np.zeros(shape=n)
-            x[2:] = np.random.uniform(-0.5, 0.5, size=n - 2)
-
-            x[1] = (self.c_hat[1] - np.sum(self.B_hat[1, 2:] * x[2:])) / self.B_hat[1, 1]
-            x[0] = (self.c_hat[0] - np.sum(self.B_hat[0, 1:] * x[1:])) / self.B_hat[0, 0]
-
-            budget_constraint = np.abs(np.dot(x, self.S_0) - self.V_0)
-
-            expected_return = np.dot(
-                x,
-                np.sum(
-                    self.probabilities.reshape(-1, 1) * (self.states - self.S_0), axis=0
-                ),
-            )
-            target_return = self.return_rate * self.V_0
-            return_constraint = np.abs(expected_return - target_return)
-
-            if budget_constraint <= 1e-5 and return_constraint <= 1e-5:
-                return x
-
-        raise ValueError(
-            f"Failed to find a feasible portfolio after {max_tries} of attempts."
-        )
+        self.x = self._initialize_portfolio()
 
     def _prepare_constraints(self) -> None:
         """
@@ -125,7 +65,7 @@ class PortfolioOptimizerSA:
 
         B[0, :] = self.S_0
         B[1, :] = (
-            np.sum(self.probabilities.reshape(-1, 1) * (self.states - self.S_0), axis=0)
+            np.sum(self.probabilities.reshape(-1, 1) * (self.S_T - self.S_0), axis=0)
             - self.return_rate * self.S_0
         )
 
@@ -134,13 +74,45 @@ class PortfolioOptimizerSA:
 
         B_hat = B.copy()
 
+        # TODO maybe try changing columns
         if np.abs(B[0, 0]) < 1e-10:
             raise ValueError("Cannot perform matrix reduction")
 
-        B_hat[1, :] = B_hat[1, :] - B_hat[0, :] * B_hat[1, 0] / B_hat[0, 0]
+        row_scaling_factor = B_hat[1, 0] / B_hat[0, 0]
+        B_hat[1, :] = B_hat[1, :] - B_hat[0, :] * row_scaling_factor
+        c[1] -= c[0] * row_scaling_factor
 
         self.B_hat = B_hat
         self.c_hat = c
+
+    def _correct_x(self, x: np.ndarray) -> None:
+        x[1] = (self.c_hat[1] - np.dot(self.B_hat[1, 2:], x[2:])) / self.B_hat[1, 1]
+        x[0] = (self.c_hat[0] - np.dot(self.B_hat[0, 1:], x[1:])) / self.B_hat[0, 0]
+
+    def _initialize_portfolio(self) -> np.ndarray:
+        """
+        Initializes the portfolio.
+
+        Returns:
+            np.ndarray: The initialized portfolio.
+        """
+        x = np.zeros_like(self.S_0, dtype=np.float32)
+        self._correct_x(x)
+
+        return x
+
+    def _annealing_schedule(self, T: float, iteration: int) -> float:
+        """
+        Calculate the temperature for simulated annealing based on the current iteration.
+
+        Args:
+            T (float): The initial temperature.
+            iteration (int): The current iteration number.
+
+        Returns:
+            float: The updated temperature for the given iteration.
+        """
+        return T * (self.annealing_rate - 0.2 * (iteration / self.max_iter))
 
     def optimize(self) -> None:
         """
@@ -152,22 +124,17 @@ class PortfolioOptimizerSA:
         T = self.T_0
         iteration = 1
         best_x = self.x.copy()
-        best_CVaR = self._calculate_CVaR(best_x)
+        best_CVaR = self.calculate_CVaR(best_x)
 
         while T > self.T_f and iteration <= self.max_iter:
             k = np.random.randint(2, len(self.x))
             delta = np.random.uniform(-self.step_size, self.step_size)
             x_new = self.x.copy()
             x_new[k] += delta
-            x_new[1] = (
-                self.c_hat[1] - np.sum(self.B_hat[1, 2:] * x_new[2:])
-            ) / self.B_hat[1, 1]
-            x_new[0] = (
-                self.c_hat[0] - np.sum(self.B_hat[0, 1:] * x_new[1:])
-            ) / self.B_hat[0, 0]
+            self._correct_x(x_new)
 
-            current_CVaR = self._calculate_CVaR(self.x)
-            new_CVaR = self._calculate_CVaR(x_new)
+            current_CVaR = self.calculate_CVaR(self.x)
+            new_CVaR = self.calculate_CVaR(x_new)
 
             delta_CVaR = new_CVaR - current_CVaR
             p_accept = min(1, np.exp(-delta_CVaR / T))
@@ -182,7 +149,29 @@ class PortfolioOptimizerSA:
             T = self._annealing_schedule(T, iteration)
             iteration += 1
 
-    def _calculate_CVaR(self, portfolio: np.ndarray) -> float:
+    def _calculate_Var(self, L_vals: np.ndarray) -> float:
+        """
+        Calculate the Value at Risk (VaR) for a given array of L_vals.
+
+        Args:
+            L_vals (np.ndarray): Array of L_vals.
+
+        Returns:
+            float: The Value at Risk (VaR) for the given L_vals.
+        """
+        L_val_proba_map = {L_vals[i]: self.probabilities[i] for i in range(len(L_vals))}
+        L_vals_sorted = np.sort(L_vals)
+        cum_probs = np.cumsum([L_val_proba_map[L_val] for L_val in L_vals_sorted])
+
+        z_index = last_feasible_z_index = len(L_vals_sorted) - 1
+        while z_index >= 0 and cum_probs[z_index] >= self.alpha:
+            last_feasible_z_index = z_index
+            z_index -= 1
+
+        return L_vals_sorted[last_feasible_z_index]
+
+
+    def calculate_CVaR(self, portfolio: np.ndarray) -> float:
         """
         Calculates the Conditional Value at Risk (CVaR) for a given portfolio.
 
@@ -192,8 +181,14 @@ class PortfolioOptimizerSA:
         Returns:
             float: The CVaR value.
         """
-        L_vals = -(self.states - self.S_0) @ portfolio
-        beta = np.percentile(L_vals, self.alpha * 100)
-        excess_losses = L_vals[L_vals > beta] - beta
-        CVaR = beta + np.mean(excess_losses) / (1 - self.alpha)
+        L_vals = -(self.S_T - self.S_0) @ portfolio
+        beta = self._calculate_Var(L_vals)
+        
+        loss_filter = L_vals > beta
+        excess_losses = L_vals[loss_filter] - beta
+        corresponding_probs = self.probabilities[loss_filter]
+        
+        expected_excess_loss = np.dot(excess_losses, corresponding_probs)
+        CVaR = beta + expected_excess_loss / (1 - self.alpha)
+        
         return CVaR
