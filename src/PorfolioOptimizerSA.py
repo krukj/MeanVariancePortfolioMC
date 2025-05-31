@@ -49,7 +49,15 @@ class PortfolioOptimizerSA:
         self.V_0 = V_0
         
         self._prepare_constraints()
-        self.x = self._initialize_portfolio()
+        
+        if initial_portfolio is not None:
+            if len(initial_portfolio) != len(S_0):
+                raise ValueError("Initial portfolio length must match the number of assets.")
+            x = initial_portfolio.copy()
+            self._correct_x(x)
+            self.x = x
+        else:
+            self.x = self._initialize_portfolio()
 
     def _prepare_constraints(self) -> None:
         """
@@ -114,7 +122,7 @@ class PortfolioOptimizerSA:
         """
         return T * (self.annealing_rate - 0.2 * (iteration / self.max_iter))
 
-    def optimize(self) -> None:
+    def optimize(self, regularization_lambda=0) -> None:
         """
         Performs optimization using the Simulated Annealing algorithm.
 
@@ -124,7 +132,11 @@ class PortfolioOptimizerSA:
         T = self.T_0
         iteration = 1
         best_x = self.x.copy()
-        best_CVaR = self.calculate_CVaR(best_x)
+        best_CVaR = self.calculate_CVaR(best_x,regularization_lambda=regularization_lambda)
+
+        self.objective_value_history = []
+        self.portfolio_history = []
+        self.temperature_history = []
 
         while T > self.T_f and iteration <= self.max_iter:
             k = np.random.randint(2, len(self.x))
@@ -133,8 +145,8 @@ class PortfolioOptimizerSA:
             x_new[k] += delta
             self._correct_x(x_new)
 
-            current_CVaR = self.calculate_CVaR(self.x)
-            new_CVaR = self.calculate_CVaR(x_new)
+            current_CVaR = self.calculate_CVaR(self.x, regularization_lambda=regularization_lambda)
+            new_CVaR = self.calculate_CVaR(x_new,regularization_lambda=regularization_lambda)
 
             delta_CVaR = new_CVaR - current_CVaR
             p_accept = min(1, np.exp(-delta_CVaR / T))
@@ -145,6 +157,10 @@ class PortfolioOptimizerSA:
             if new_CVaR < best_CVaR:
                 best_CVaR = new_CVaR
                 best_x = x_new.copy()
+
+            self.objective_value_history.append(current_CVaR)
+            self.portfolio_history.append(self.x.copy())
+            self.temperature_history.append(T)
 
             T = self._annealing_schedule(T, iteration)
             iteration += 1
@@ -171,7 +187,7 @@ class PortfolioOptimizerSA:
         return L_vals_sorted[last_feasible_z_index]
 
 
-    def calculate_CVaR(self, portfolio: np.ndarray) -> float:
+    def calculate_CVaR(self, portfolio: np.ndarray, regularization_lambda: float = 0) -> float:
         """
         Calculates the Conditional Value at Risk (CVaR) for a given portfolio.
 
@@ -190,5 +206,7 @@ class PortfolioOptimizerSA:
         
         expected_excess_loss = np.dot(excess_losses, corresponding_probs)
         CVaR = beta + expected_excess_loss / (1 - self.alpha)
+        penalty = regularization_lambda * np.sum(portfolio**2)
+        CVaR += penalty
         
         return CVaR
