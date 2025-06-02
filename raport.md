@@ -407,6 +407,17 @@ Analizujemy odchylenie standardowe i różnicę między największą i najmniejs
 <img src="visualizations/odchylenie.png" width="100%">
 
 ---
+#### Wyniki z eksperymentów
+
+| Liczba scenariuszy | Średnia   | Odchylenie std | Max - Min  |
+|--------------------|-----------|----------------|------------|
+| 100                | 0.990016  | 0.008143       | 0.020650   |
+| 1 000              | 0.998734  | 0.001053       | 0.002935   |
+| 10 000             | 0.998517  | 0.000804       | 0.002071   |
+| 100 000            | 0.999582  | 0.000321       | 0.000905   |
+| 1 000 000          | 0.999847  | 0.000129       | 0.000299   |
+
+---
 
 # Wnioski
 
