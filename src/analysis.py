@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import imageio
-
+from tabulate import tabulate
 
 from src.PorfolioOptimizerSA import PortfolioOptimizerSA
 
@@ -81,7 +81,7 @@ def plot_cvar_history(T_0: float,
                           return_rate: float,
                           n_paths = 1):
     plt.figure(figsize=(12,8))
-    for _ in range(n_paths):
+    for i in range(n_paths):
         optimizer = PortfolioOptimizerSA(
             T_0=T_0,
             T_f=T_f,
@@ -98,11 +98,14 @@ def plot_cvar_history(T_0: float,
         optimizer.optimize()
         y = optimizer.objective_value_history
         x = np.arange(1, len(y) + 1)
+        print(f"Path {i+1}: Final CVaR = {y[-1]:.4f}")
+        
         plt.plot(x, y, color=plt.cm.Blues(np.random.uniform(0.5,1)))
     plt.title(f'CVaR vs. Iteraration ({n_paths} separate simulations)')
     plt.xlabel('Iterations')
     plt.ylabel('CVaR')
     plt.grid(True)
+            
     
 
 def plot_weights(optimizer: PortfolioOptimizerSA, filename: str, plot_every_k_iterations: int = 1, fps: int = 10) -> None:
@@ -332,4 +335,175 @@ def plot_regulariztation_weights(T_0: float,
     print(f"CVaR without regularization: {cvar_no_reg:.2f}")
   
     
+
+def probabilities_ifluence(T_0: float,
+                          T_f: float,
+                          max_iter: int,
+                          step_size: float,
+                          annealing_rate: float,
+                          probabilities: list,
+                          alpha: float,
+                          S_0: np.ndarray,
+                          S_T: np.ndarray,
+                          V_0: float,
+                          return_rate: float,
+                          n_paths = 1):
+
+    results = []
+    for k, p in enumerate(probabilities):
+        cvar_list = []
+        for i in range(n_paths):
+            optimizer = PortfolioOptimizerSA(
+                T_0=T_0,
+                T_f=T_f,
+                max_iter=max_iter,
+                step_size=step_size,
+                annealing_rate=annealing_rate,
+                probabilities=p,
+                alpha=alpha,
+                S_0=S_0,
+                S_T=S_T,
+                V_0=V_0,
+                return_rate=return_rate)
+            optimizer.optimize()
+            cvar_list.append(optimizer.objective_value_history[-1])
+        results.append({
+            'probabilities': f'non-uniform' if k == 0 else 'uniform',
+            'mean_CVaR': np.mean(cvar_list),
+            'std_CVaR': np.std(cvar_list)
+        })
+    df = pd.DataFrame(results)
+    print(tabulate(df, headers='keys', tablefmt='github', floatfmt=('.2f', '.2f', '.2f')))  
     
+def generate_scenarios(S_0, number_of_scenarios=1000):
+    """
+    Generuje losowe scenariusze na podstawie stanu początkowego.
+    
+    """
+    
+    p = np.array([0.1, 0.2, 0.4, 0.2, 0.1])
+    scenarios = np.zeros((number_of_scenarios, len(S_0)))
+    for i in range(number_of_scenarios):
+        coefs = [np.random.normal(0.3, 0.1), 
+                 np.random.normal(0.9, 0.1),
+                 np.random.normal(1, 0.1),
+                 np.random.normal(1.2, 0.2),
+                 np.random.normal(1.5, 1)]
+        chosen = np.random.choice(coefs, size=len(S_0), p=p)
+        
+        # ensure at least one growth
+        if not np.any(np.array(chosen) > 1):
+            idx = np.random.randint(len(S_0))
+            chosen[idx] = np.random.uniform(1.01, 1.1)
+        
+        S_T = S_0 * chosen
+        scenarios[i] = S_T
+    
+    return scenarios
+    
+    
+def examine_num_of_scenarios_influence(T_0: float,
+                          T_f: float,
+                          max_iter: int,
+                          step_size: float,
+                          annealing_rate: float,
+                          alpha: float,
+                          S_0: np.ndarray,
+                          S_T: np.ndarray,
+                          V_0: float,
+                          return_rate: float,
+                          nums_of_scenarios: list[int] = [100, 1000, 10000, 100000],
+                          n_paths = 5,
+                          probabilities: str = 'uniform'):
+    
+    res = {}
+    
+    plt.subplots(len(nums_of_scenarios), 1, figsize=(10, 5 * len(nums_of_scenarios)))
+    
+    for i, num in enumerate(nums_of_scenarios):
+        S_T_subset = generate_scenarios(S_0, number_of_scenarios=num)
+        for j in range(n_paths):
+            if probabilities == 'uniform':
+                probabilities_subset = np.ones(S_T_subset.shape[0]) / S_T_subset.shape[0]
+            else:
+                probabilities_subset = 1 / np.arange(1, S_T_subset.shape[0] + 1)
+                probabilities_subset /= probabilities_subset.sum()
+            
+            optimizer = PortfolioOptimizerSA(
+                T_0=T_0,
+                T_f=T_f,
+                max_iter=max_iter,
+                step_size=step_size,
+                annealing_rate=annealing_rate,
+                probabilities=probabilities_subset,
+                alpha=alpha,
+                S_0=S_0,
+                S_T=S_T_subset,
+                V_0=V_0,
+                return_rate=return_rate
+            )
+            optimizer.optimize()
+            
+            plt.subplot(len(nums_of_scenarios), 1, i + 1)
+            plt.plot(optimizer.objective_value_history, color=plt.cm.Blues(np.random.uniform(0.5, 1)))
+            plt.grid(True)  # Add grid
+
+            if num not in res:
+                res[num] = []
+            res[num].append(optimizer.objective_value_history[-1])
+
+        plt.xlabel('Iteracja')
+        plt.ylabel('Wartość funkcji celu (CVaR)')
+        plt.title(f'Liczba scenariuszy: {num}')
+        plt.grid(True)  
+        
+        print(f'Zakończono obliczenia dla {num} scenariuszy.')
+
+    plt.tight_layout()
+    plt.show()
+    for key, values in res.items():
+        res[key] = values / np.max(values)
+        
+    plt.figure(figsize=(10, 5))
+    box = plt.boxplot(list(res.values()), labels=[str(k) for k in res.keys()], patch_artist=True)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(box['boxes'])))
+    for patch, color in zip(box['boxes'], colors):
+        patch.set_facecolor(color)
+    plt.xlabel('Liczba scenariuszy')
+    plt.ylabel('Znormalizowana wartość CVaR')
+    # plt.yscale('log')
+    plt.title('Wpływ liczby scenariuszy na wartość CVaR')
+    plt.show()
+    
+    table = []
+    for num, values in res.items():
+        mean = np.mean(values)
+        std = np.std(values)
+        max_min = np.max(values) - np.min(values)
+        table.append([num, mean, std, max_min])
+        
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+
+    nums = [row[0] for row in table]
+    stds = [row[2] for row in table]
+    max_mins = [row[3] for row in table]
+
+    axs[0].plot(nums, stds, marker='o')
+    axs[0].set_xlabel('Liczba scenariuszy')
+    axs[0].set_ylabel('Odchylenie std')
+    axs[0].set_title('Odchylenie std vs liczba scenariuszy')
+    axs[0].set_xscale('log')
+    axs[0].grid(True)
+    
+    axs[1].plot(nums, max_mins, marker='o', color='orange')
+    axs[1].set_xlabel('Liczba scenariuszy')
+    axs[1].set_ylabel('Max - Min')
+    axs[1].set_title('Max - Min vs liczba scenariuszy')
+    axs[1].set_xscale('log')
+    axs[1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+    print(tabulate(table, headers=["Liczba scenariuszy", "Średnia", "Odchylenie std", "Max - Min"], floatfmt=".6f"))
+    return res
