@@ -159,7 +159,8 @@ def plot_weights(
 
     for i in range(0, iterations, plot_every_k_iterations):
         ax.clear()
-        ax.bar(np.arange(len(weights[i]) + 1, weights[i]))
+        indices = np.arange(len(weights[i])) + 1
+        ax.bar(indices, weights[i])
         ax.set_ylim(y_min, y_max)
         ax.set_xlabel("Numer aktywa")
         ax.set_ylabel("Waga w portfelu")
@@ -467,6 +468,7 @@ def probabilities_ifluence(
     V_0: float,
     return_rate: float,
     n_paths=1,
+    relative: bool = True
 ):
 
     results = []
@@ -488,6 +490,8 @@ def probabilities_ifluence(
             )
             optimizer.optimize()
             cvar_list.append(optimizer.objective_value_history[-1])
+        if relative and V_0 > 0:
+            cvar_list = [cvar / V_0 for cvar in cvar_list]
         results.append(
             {
                 "probabilities": f"non-uniform" if k == 0 else "uniform",
