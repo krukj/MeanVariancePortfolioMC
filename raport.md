@@ -217,11 +217,9 @@ $$
 1. Generacja scenariuszy cen akcji $S_T(w_j) = s_j$
 2. Konstrukcja macierzy $B$ i wektora $c$
 3. Redukcja do postaci schodkowej $[\widehat{B}|\widehat{c}]$
-4. Optymalizacja z użyciem:
-   - Symulowanego wyżarzania
-   - Metod stochastycznych
+4. Optymalizacja z użyciem algorytmu symulowanego wyżarzania
 
-**Uwaga:** Dla stabilności wyniku potrzebna duża liczba scenariuszy ($10^6-10^7$)
+
 
 ---
 ## Symulowane wyżarzanie
@@ -285,21 +283,44 @@ Gdzie:
 
 ---
 
-### Losowanie scenariusza
-Dodajemy możliwość generowania scenariuszy zmiany cen akcji. Cena akcji wówczas  $S_T = \alpha S_0$, gdzie $\alpha$ oznacza:
-- duży spadek: $\alpha \sim \mathcal{N}(0.3, 0.1)$
-- spadek: $\alpha \sim \mathcal{N}(0.9, 0.1)$  
-- brak zmiany: $\alpha \sim \mathcal{N}(1, 0.1)$  
-- wzrost: $\alpha \sim \mathcal{N}(1.2, 0.2)$  
-- duży wzrost: $\alpha \sim \mathcal{N}(1.5, 1)$
+## Jak tworzyć scenariusze?
 
-Wybór współczynnika $\alpha$ odbywa się losowo z powyższych rozkładów z prawdopodobieństwami $[0.1, 0.2, 0.4, 0.2, 0.1]$. Dodatkowo, zawsze wymuszamy, by przynajmniej jedna akcja w scenariuszu miała wzrost (aby możliwe było osiagnięcie stopy zwrotu).
+### 1. Losowanie scenariusza (akcje nieskorelowane)
+Dodajemy możliwość generowania scenariuszy zmiany cen akcji. Cena akcji wówczas  $S_T = \alpha S_0$, gdzie $\alpha$ oznacza:
+- spadek: $\alpha \sim \mathcal{N}(0.6, 0.1)$  
+- brak zmiany: $\alpha \sim \mathcal{N}(1, 0.1)$  
+- wzrost: $\alpha \sim \mathcal{N}(1.4, 0.1)$  
+
+Wybór współczynnika $\alpha$ odbywa się losowo z powyższych rozkładów z prawdopodobieństwami $[0.1, 0.8, 0.1]$. 
+
+---
+### 2. Losowanie scenariusza (akcje skorelowane)
+
+Losowanie zmiennych normalnych skorelowanych. Rózne akcje mają różne zmienności (wariancje zmiany). Losowanie odbywa się w oparciu o model lognormalny: $S_T = e^\alpha S_0$, gdzie $\alpha \sim \mathcal{N}(\mu - 0.5\sigma^2, \sigma^2)$, gdzie $\mu$ przybliża oczekiwaną stopę zwrotu.
+
+
+### 3. Scenariusze oparte o badanie rynku w poprzednich latach
+Analizujemy trajektorie giełdowe akcji 3 firm i na tej podstawie wyznaczamy współczynnik $\alpha$ ($S_T = \alpha S_0$).
+
 
 ---
 
-## Przykładowa ścieżka optymalizacji
+## Ścieżki optymalizacji dla sztucznie wygenerowanych danych
 
-<img src="visualizations/path.png" width="60%">
+<img src="visualizations/path1.png" width="60%">
+
+---
+
+## Ścieżki optymalizacji dla scenariuszy ze skorelowanymi akcjami
+
+<img src="visualizations/path3.png" width="60%">
+
+---
+
+## Ścieżki optymalizacji dla danych wygenerowanych na prawdziwych szeregach giełdowych
+
+<img src="visualizations/path2.png" width="60%">
+
 
 ---
 
@@ -307,14 +328,15 @@ Wybór współczynnika $\alpha$ odbywa się losowo z powyższych rozkładów z p
 
 Badamy wpływ punktu startowego $x_0$ na wynik optymalizacji ($S_0$, $S_T$ bez zmian).
 
-| No | Portfolio początkowe       | Portfolio optymalne              | CVaR      |
-|----|----------------------------|----------------------------------|-----------|
-| 1  | [10, 20, 30, 40, 50]       | [-1124, 1190, 14, 15, 5]         | 6230 |
-| 2  | [5, 15, 25, 35, 45]        | [-1101, 1171, 11, 19, 0]         | 6110 |
-| 3  | [20, 30, 40, 50, 60]       | [-1032, 1076, 23, 27, 6]         | 5495 |
-| 4  | [0, 0, 0, 0, 100]          | [-1593, 1646, 0, 0, 47]          | 8730 |
-| 5  | [100, 100, 100, 100, 100]  | [-812, 701, 81, 77, 53]          | 2830 |
-| 6  | [1000, 1000, 1000, 1000, 1000] | [1508, -4291, 975, 957, 951] | 26598 |
+
+| Nr | Portfel początkowy         | Portfel optymalny           | CVaR / V0   |
+|----|----------------------------|-----------------------------|-------------|
+| 1  | [10 20 30 40 50]           | [ 30  64  12  21 -27]       | 0.292647    |
+| 2  | [ 5 15 25 35 45]           | [ 27  64  20  17 -28]       | 0.292920    |
+| 3  | [20 30 40 50 60]           | [ 31  64  10  22 -27]       | 0.293088    |
+| 4  | [  0   0   0   0 100]      | [ 30  67   3  21 -21]       | 0.293893    |
+| 5  | [100 100 100 100 100]      | [ 31  65  10  19 -25]       | 0.292636    |
+| 6  | [1000 10 1000 0 1]         | [-113 -23 671 -179 -256]    | 3.080822    |
 
 ---
 
@@ -322,25 +344,25 @@ Badamy wpływ punktu startowego $x_0$ na wynik optymalizacji ($S_0$, $S_T$ bez z
 
 Na poniższym wykresie znajduje się 7 ścieżek optymalzacji dla tych samych wartości początkowych $x$.
 
-<img src="visualizations/paths.png" width="55%">
+<img src="visualizations/path2.png" width="55%">
 
 ---
 ## Wpływ prawdopodobieństw scenariuszy na CVaR
 
 Przeprowadzono 10 eksperymentów (10 razy optymalizowano) z 1000 możliwych scenariuszy (tzn. $S_T = (S_T^1,...,S_T^{1000}$), gdy scenariusze są jednakowo prawdopodobne i gdy nie są.
 
-| rozkład   |   średnie CVaR |   odchylenie standardowe |
-|-----------------|-------------|------------|
-| niejednostajny     |    37586.06 |   443.95  |
-| jednostajny         |    21466.81 |    10.77 |
+| Nr | Rozkład prawdopodobieństw | Średnia CVaR | Odchylenie std CVaR |
+|----|--------------------------|--------------|---------------------|
+| 0  | niejednostajny           | 0.31         | 5.28819e-05         |
+| 1  | jednostajny              | 1.67         | 0.00932323          |
 
-Rozkład jednostajny zapewnia większą stabilność i mniejsze CVaR.
+Wybór rozkładu na scenariuszach ma niebagatelne znaczenie dla wyników końcowych (CVaR oraz jego rozrzutu na różnych ścieżkach optymalizacji).
 
 ---
 
 ## CVaR vs. stopa zwrotu 
 
-<img src="visualizations/returnrate.png" width="70%">
+<img src="visualizations/rr.png" width="70%">
 
 ---
 
@@ -348,7 +370,7 @@ Rozkład jednostajny zapewnia większą stabilność i mniejsze CVaR.
 
 $S_T$ składa się z 5 możliwych scenariuszy, na sztywno ustawionych przez nas, rozkład prawdopodobieństw scenariuszy jest jednostajny.
 
-<img src="visualizations/weights_gen.gif" width="60%">
+<img src="visualizations/weights.gif" width="60%">
 
 ---
 
@@ -360,8 +382,15 @@ $S_T$ składa się z 1000 możliwych losowanych scenariuszy, rozkład prawdopodo
 
 ---
 
-## Regularyzacja L2
+## Zmiana współrzędnych portfela w procesie optymalizacji
 
+$S_T$ składa się z 1000 możliwych scenariuszy powstałych z danych historycznych, rozkład prawdopodobieństw scenariuszy jest niejednostajny (prawdopodobieństwo rośnie wraz z numerem scenariusza).
+
+<img src="visualizations/weights_hist.gif" width="55%">
+
+---
+
+## Regularyzacja L2
 
 
 <img src="visualizations/regul.png" width="65%">
@@ -373,32 +402,7 @@ $S_T$ składa się z 1000 możliwych losowanych scenariuszy, rozkład prawdopodo
 Badamy wpływ liczby scenariuszy $(10^2,...,10^6)$ na rozrzut wartości CVaR w powtarzanych testach.
 
 ---
-Liczba scenariuszy: $10^2$.
-
-<img src="visualizations/zb2.png" width="70%">
-
----
-Liczba scenariuszy: $10^3$.
-
-<img src="visualizations/zb3.png" width="70%">
-
----
-Liczba scenariuszy: $10^4$.
-
-<img src="visualizations/zb4.png" width="70%">
-
----
-Liczba scenariuszy: $10^5$.
-
-<img src="visualizations/zb5.png" width="70%">
-
----
-Liczba scenariuszy: $10^6$.
-
-<img src="visualizations/zb6.png" width="70%">
-
----
-Estymowane wartości CVaR normalizujemy przez maksymalną w danych eksperymencie i badamy rozrzut wartości. Na podstawie wykresów poniżej wnioskujemy, że im większa liczba scenariuszy, tym stabilniejsze wyniki.
+Estymowane wartości CVaR normalizujemy przez maksymalną w danym eksperymencie i badamy rozrzut wartości. Na podstawie wykresów poniżej wnioskujemy, że im większa liczba scenariuszy, tym stabilniejsze wyniki.
 
 <img src="visualizations/boxplot.png" width="70%">
 
@@ -409,13 +413,13 @@ Analizujemy odchylenie standardowe i różnicę między największą i najmniejs
 ---
 #### Wyniki z eksperymentów
 
-| Liczba scenariuszy | Średnia   | Odchylenie std | Max - Min  |
-|--------------------|-----------|----------------|------------|
-| 100                | 0.990016  | 0.008143       | 0.020650   |
-| 1 000              | 0.998734  | 0.001053       | 0.002935   |
-| 10 000             | 0.998517  | 0.000804       | 0.002071   |
-| 100 000            | 0.999582  | 0.000321       | 0.000905   |
-| 1 000 000          | 0.999847  | 0.000129       | 0.000299   |
+| Liczba scenariuszy | Odchylenie std | Max - Min  |
+|--------------------|----------------|------------|
+| 100                | 0.008143       | 0.020650   |
+| 1 000              | 0.001053       | 0.002935   |
+| 10 000             | 0.000804       | 0.002071   |
+| 100 000            | 0.000321       | 0.000905   |
+| 1 000 000          | 0.000129       | 0.000299   |
 
 ---
 
