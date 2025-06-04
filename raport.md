@@ -402,6 +402,36 @@ $S_T$ składa się z 1000 możliwych scenariuszy powstałych z danych historyczn
 Badamy wpływ liczby scenariuszy $(10^2,...,10^6)$ na rozrzut wartości CVaR w powtarzanych testach.
 
 ---
+Zbieżność metody przy 100 scenariuszach końcowych.
+
+<img src="visualizations/zb2.png" width="75%">
+
+---
+
+Zbieżność metody przy 1000 scenariuszach końcowych.
+
+<img src="visualizations/zb3.png" width="75%">
+
+---
+
+Zbieżność metody przy $10^4$ scenariuszach końcowych.
+
+<img src="visualizations/zb4.png" width="75%">
+
+---
+
+Zbieżność metody przy $10^5$ scenariuszach końcowych.
+
+<img src="visualizations/zb5.png" width="75%">
+
+---
+
+Zbieżność metody przy $10^6$ scenariuszach końcowych.
+
+<img src="visualizations/zb6.png" width="75%">
+
+---
+
 Estymowane wartości CVaR normalizujemy przez maksymalną w danym eksperymencie i badamy rozrzut wartości. Na podstawie wykresów poniżej wnioskujemy, że im większa liczba scenariuszy, tym stabilniejsze wyniki.
 
 <img src="visualizations/boxplot.png" width="70%">

@@ -505,33 +505,45 @@ def probabilities_ifluence(
     )
 
 
-def generate_scenarios(S_0, number_of_scenarios=1000):
+def generate_scenarios_uncor(S_0, number_of_scenarios=1000):
     """
     Generuje losowe scenariusze na podstawie stanu początkowego.
-
+    
     """
-
-    p = np.array([0.1, 0.2, 0.4, 0.2, 0.1])
+    
+    p = np.array([0.1, 0.8, 0.1])
     scenarios = np.zeros((number_of_scenarios, len(S_0)))
     for i in range(number_of_scenarios):
-        coefs = [
-            np.random.normal(0.3, 0.1),
-            np.random.normal(0.9, 0.1),
-            np.random.normal(1, 0.1),
-            np.random.normal(1.2, 0.2),
-            np.random.normal(1.5, 1),
-        ]
+        coefs = [np.random.normal(0.6, 0.1), 
+                 np.random.normal(1, 0.1),
+                 np.random.normal(1.4, 0.1)]
         chosen = np.random.choice(coefs, size=len(S_0), p=p)
-
-        # ensure at least one growth
-        if not np.any(np.array(chosen) > 1):
-            idx = np.random.randint(len(S_0))
-            chosen[idx] = np.random.uniform(1.01, 1.1)
-
+        
         S_T = S_0 * chosen
         scenarios[i] = S_T
-
+    
     return scenarios
+
+def generate_scenarios_corr(S_0, number_of_scenarios=1000, correlated_indices=[0,1], rho=0.5, return_rate=0.05):
+    assert len(correlated_indices) == 2, "Two indices must be provided for correlation."
+    
+    n = len(S_0)
+    scenarios = np.zeros((number_of_scenarios, n))
+    
+    sigmas = np.array([0.05, 0.1, 0.05, 0.1, 0.001, 0.02, 0.1, 0.1][:n])  
+    
+    cov_matrix = np.diag(sigmas**2)
+    i, j = correlated_indices
+    cov_matrix[i,j] = cov_matrix[j,i] = rho * sigmas[i] * sigmas[j]
+    
+    means = np.full(n, return_rate) - 0.5 * sigmas**2
+    
+    for i in range(number_of_scenarios):
+        coefs = np.random.multivariate_normal(means, cov_matrix)
+        S_T = S_0 * np.exp(coefs)
+        scenarios[i] = S_T
+    return scenarios
+        
 
 
 def examine_num_of_scenarios_influence(
@@ -548,6 +560,7 @@ def examine_num_of_scenarios_influence(
     nums_of_scenarios: list[int] = [100, 1000, 10000, 100000],
     n_paths: int = 5,
     probabilities: str = "uniform",
+    relative: bool = False,
 ):
     res = {}
 
@@ -558,7 +571,7 @@ def examine_num_of_scenarios_influence(
         axs = [axs]
 
     for i, num in enumerate(nums_of_scenarios):
-        S_T_subset = generate_scenarios(S_0, number_of_scenarios=num)
+        S_T_subset = generate_scenarios_uncor(S_0, number_of_scenarios=num)
         res[num] = []
 
         for j in range(n_paths):
@@ -586,17 +599,17 @@ def examine_num_of_scenarios_influence(
             optimizer.optimize()
 
             axs[i].plot(
-                optimizer.objective_value_history,
+                optimizer.objective_value_history if not relative else [v / V_0 if V_0 > 0 else np.nan for v in optimizer.objective_value_history],
                 color=plt.cm.Blues(np.random.uniform(0.5, 1)),
                 alpha=0.8,
             )
             axs[i].set_title(f"Liczba scenariuszy: {num}")
             axs[i].set_xlabel("Iteracja")
-            axs[i].set_ylabel("CVaR")
+            axs[i].set_ylabel("CVaR" if not relative else "CVaR / V0")
             axs[i].grid(True)
 
             final_CVaR = optimizer.objective_value_history[-1]
-            relative_CVaR = final_CVaR / V_0 if V_0 > 0 else np.nan
+            relative_CVaR = final_CVaR / V_0 if relative and V_0 > 0 else final_CVaR
             res[num].append(relative_CVaR)
 
         print(f"Zakończono obliczenia dla {num} scenariuszy.")
@@ -610,13 +623,14 @@ def examine_num_of_scenarios_influence(
         labels=[str(k) for k in res.keys()],
         patch_artist=True,
     )
+    plt.yscale("log")
     colors = plt.cm.viridis(np.linspace(0, 1, len(box["boxes"])))
     for patch, color in zip(box["boxes"], colors):
         patch.set_facecolor(color)
 
     plt.xlabel("Liczba scenariuszy")
-    plt.ylabel("Relatywna wartość CVaR (CVaR / V0)")
-    plt.title("Wpływ liczby scenariuszy na relatywne CVaR")
+    plt.ylabel("Relatywna wartość CVaR (CVaR / V0)" if relative else "CVaR")
+    plt.title("Wpływ liczby scenariuszy na relatywne CVaR" if relative else "Wpływ liczby scenariuszy na CVaR")
     plt.grid(True)
     plt.show()
 
@@ -635,14 +649,14 @@ def examine_num_of_scenarios_influence(
 
     axs[0].plot(nums, stds, marker="o")
     axs[0].set_xlabel("Liczba scenariuszy")
-    axs[0].set_ylabel("Odchylenie std (CVaR rel.)")
+    axs[0].set_ylabel("Odchylenie std (CVaR rel.)" if relative else "Odchylenie std (CVaR)")
     axs[0].set_title("Odchylenie std vs liczba scenariuszy")
     axs[0].set_xscale("log")
     axs[0].grid(True)
 
     axs[1].plot(nums, max_mins, marker="o", color="orange")
     axs[1].set_xlabel("Liczba scenariuszy")
-    axs[1].set_ylabel("Max - Min (CVaR rel.)")
+    axs[1].set_ylabel("Max - Min (CVaR rel.)" if relative else "Max - Min (CVaR)")
     axs[1].set_title("Max - Min vs liczba scenariuszy")
     axs[1].set_xscale("log")
     axs[1].grid(True)
@@ -655,7 +669,7 @@ def examine_num_of_scenarios_influence(
             table,
             headers=[
                 "Liczba scenariuszy",
-                "Średnia (CVaR/V0)",
+                "Średnia (CVaR/V0)" if relative else "Średnia (CVaR)",
                 "Odchylenie std",
                 "Max - Min",
             ],
