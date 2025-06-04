@@ -193,7 +193,7 @@ $$
 $$
 Bx = c, \quad \text{gdzie} \quad B = \begin{bmatrix}
 S_0^\top \\
-\left(\sum p_j(s_j-S_0) - r_e S_0\right)^\top
+\left(\sum_{j=0}^{m} p_j(s_j-S_0) - r_e S_0\right)^\top
 \end{bmatrix}, \quad c = \begin{bmatrix} V_0 \\ 0 \end{bmatrix}
 $$
 
